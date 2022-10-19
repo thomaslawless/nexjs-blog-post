@@ -1,73 +1,128 @@
-import PostContent from '../../components/PostContent';
-import styles from '../../styles/Post.module.css';
-import { firestore, getUserWithUsername, postToJSON } from '../../lib/firebase';
-import { useDocumentData } from 'react-firebase-hooks/firestore';
+import styles from '../../styles/Admin.module.css';
+import AuthCheck from '../../components/AuthCheck';
+import { firestore, auth } from '../../lib/firebase';
+import { serverTimestamp, doc, deleteDoc, updateDoc, getFirestore } from 'firebase/firestore';
+import ImageUploader from '../../components/ImageUploader';
 
-// incremental static regeneration for posts - regenerate on server when new requests come in based on time interval
+import { useState } from 'react';
+import { useRouter } from 'next/router';
 
-export async function getStaticProps({ params }) {
-  const { username, slug } = params;
-  const userDoc = await getUserWithUsername(username);
+import { useDocumentDataOnce } from 'react-firebase-hooks/firestore';
+import { useForm } from 'react-hook-form';
+import ReactMarkdown from 'react-markdown';
+import Link from 'next/link';
+import toast from 'react-hot-toast';
 
-  let post;
-  let path;
-
-  if (userDoc) {
-    const postRef = userDoc.ref.collection('posts').doc(slug);
-    post = postToJSON(await postRef.get());
-
-    path = postRef.path;
-  }
-
-  return {
-    props: { post, path },
-    revalidate: 5000,
-  };
+export default function AdminPostEdit(props) {
+  return (
+    <AuthCheck>
+      <PostManager />
+    </AuthCheck>
+  );
 }
 
-export async function getStaticPaths() {
-  // Improve my using Admin SDK to select empty docs
-  const snapshot = await firestore.collectionGroup('posts').get();
+function PostManager() {
+  const [preview, setPreview] = useState(false);
 
-  const paths = snapshot.docs.map((doc) => {
-    const { slug, username } = doc.data();
-    return {
-      params: { username, slug },
-    };
-  });
+  const router = useRouter();
+  const { slug } = router.query;
 
-  return {
-    // must be in this format:
-    // paths: [
-    //   { params: { username, slug }}
-    // ],
-    paths,
-    fallback: 'blocking',
-    // when user views a page that has not been rendered yet, fall back to server side render
-    // after render, cashed on CDN
-  };
-}
-
-
-export default function Post(props) {
-  const postRef = firestore.doc(props.path);
-  const [realtimePost] = useDocumentData(postRef);
-
-  const post = realtimePost || props.post;
+  // const postRef = firestore.collection('users').doc(auth.currentUser.uid).collection('posts').doc(slug);
+  const postRef = doc(getFirestore(), 'users', auth.currentUser.uid, 'posts', slug)
+  const [post] = useDocumentDataOnce(postRef);
 
   return (
     <main className={styles.container}>
+      {post && (
+        <>
+          <section>
+            <h1>{post.title}</h1>
+            <p>ID: {post.slug}</p>
 
-      <section>
-        <PostContent post={post} />
-      </section>
+            <PostForm postRef={postRef} defaultValues={post} preview={preview} />
+          </section>
 
-      <aside className="card">
-        <p>
-          <strong>{post.heartCount || 0} 🤍</strong>
-        </p>
-
-      </aside>
+          <aside>
+            <h3>Tools</h3>
+            <button onClick={() => setPreview(!preview)}>{preview ? 'Edit' : 'Preview'}</button>
+            <Link href={`/${post.username}/${post.slug}`}>
+              <button className="btn-blue">Live view</button>
+            </Link>
+            <DeletePostButton postRef={postRef} />
+          </aside>
+        </>
+      )}
     </main>
+  );
+}
+
+function PostForm({ defaultValues, postRef, preview }) {
+  const { register, errors, handleSubmit, formState, reset, watch } = useForm({ defaultValues, mode: 'onChange' });
+
+  const { isValid, isDirty } = formState;
+
+  const updatePost = async ({ content, published }) => {
+    await updateDoc(postRef, {
+      content,
+      published,
+      updatedAt: serverTimestamp(),
+    });
+
+    reset({ content, published });
+
+    toast.success('Post updated successfully!');
+  };
+
+  return (
+    <form onSubmit={handleSubmit(updatePost)}>
+      {preview && (
+        <div className="card">
+          <ReactMarkdown>{watch('content')}</ReactMarkdown>
+        </div>
+      )}
+
+      <div className={preview ? styles.hidden : styles.controls}>
+        <ImageUploader />
+
+        <textarea
+          name="content"
+          ref={register({
+            maxLength: { value: 20000, message: 'content is too long' },
+            minLength: { value: 10, message: 'content is too short' },
+            required: { value: true, message: 'content is required' },
+          })}
+        ></textarea>
+
+        {errors.content && <p className="text-danger">{errors.content.message}</p>}
+
+        <fieldset>
+          <input className={styles.checkbox} name="published" type="checkbox" ref={register} />
+          <label>Published</label>
+        </fieldset>
+
+        <button type="submit" className="btn-green" disabled={!isDirty || !isValid}>
+          Save Changes
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DeletePostButton({ postRef }) {
+  const router = useRouter();
+
+  const deletePost = async () => {
+    const doIt = confirm('are you sure!');
+    if (doIt) {
+      await deleteDoc(postRef);
+      router.push('/admin');
+      toast('post annihilated ', { icon: '🗑️' });
+    }
+  };
+
+  return (
+    <button className="btn-red" onClick={deletePost}>
+      Delete
+    </button>
   );
 }
