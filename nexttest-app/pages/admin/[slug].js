@@ -2,7 +2,7 @@ import styles from '../../styles/Admin.module.css';
 import AuthCheck from '../../components/AuthCheck';
 import { firestore, auth } from '../../lib/firebase';
 import { serverTimestamp, doc, deleteDoc, updateDoc, getFirestore } from 'firebase/firestore';
-//import ImageUploader from '../../components/ImageUploader';
+import ImageUploader from '../../components/ImageUploader';
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { useDocumentDataOnce } from 'react-firebase-hooks/firestore';
@@ -54,7 +54,31 @@ export default function AdminPostEdit(props) {
   }
   
   function PostForm({ defaultValues, postRef, preview }) {
-    const { register, handleSubmit, reset, watch } = useForm({ defaultValues, mode: 'onChange' });
+    const { 
+        register, 
+        handleSubmit, 
+        reset, 
+        watch, 
+        formState, 
+        errors 
+      } = useForm({ defaultValues, mode: 'onChange' });
+    
+      const { isValid, isDirty } = formState;
+    
+    // ...
+    
+          <textarea name="content" ref={register({
+                maxLength: { value: 20000, message: 'content is too long' },
+                minLength: { value: 10, message: 'content is too short' },
+                required: { value: true, message: 'content is required'}
+              })}>
+          </textarea>
+    
+            {errors.content && <p className="text-danger">{errors.content.message}</p>}
+    
+            <button type="submit" disabled={!isDirty || !isValid}>
+              Save Changes
+            </button>
   
     const updatePost = async ({ content, published }) => {
       await postRef.update({
@@ -77,11 +101,14 @@ export default function AdminPostEdit(props) {
         )}
   
         <div className={preview ? styles.hidden : styles.controls}>
+
+            <ImageUploader />
     
-          <textarea name="content" ref={register}></textarea>
+
+          <textarea {...register('content')}></textarea>
   
           <fieldset>
-            <input className={styles.checkbox} name="published" type="checkbox" ref={register} />
+            <input className={styles.checkbox} {...register('published')} type="checkbox" />
             <label>Published</label>
           </fieldset>
   
