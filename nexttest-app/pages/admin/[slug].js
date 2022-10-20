@@ -84,18 +84,16 @@ function PostForm({ defaultValues, postRef, preview }) {
         <ImageUploader />
 
         <textarea
-          name="content"
-          ref={register({
+          {...register('content', {
             maxLength: { value: 20000, message: 'content is too long' },
             minLength: { value: 10, message: 'content is too short' },
             required: { value: true, message: 'content is required' },
-          })}
-        ></textarea>
+          })}></textarea>
 
-        {errors.content && <p className="text-danger">{errors.content.message}</p>}
+        
 
         <fieldset>
-          <input className={styles.checkbox} name="published" type="checkbox" ref={register} />
+          <input className={styles.checkbox} {...register('published')} type="checkbox" />
           <label>Published</label>
         </fieldset>
 
